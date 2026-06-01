@@ -1,6 +1,6 @@
 async function searchResults(keyword) {
   const results = [];
-  const baseUrl = "https://animeworld.ac";
+  const baseUrl = "https://www.animeworld.ac";
 
   try {
     const response = await soraFetch(
@@ -101,7 +101,7 @@ async function extractEpisodes(url) {
     const html = await response.text();
 
     const episodes = [];
-    const baseUrl = "https://animeworld.ac";
+    const baseUrl = "https://www.animeworld.ac";
 
     const serverActiveRegex =
       /<div class="server active"[^>]*>([\s\S]*?)<\/ul>\s*<\/div>/;

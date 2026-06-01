@@ -9,7 +9,7 @@
   "language": "Italian",
   "streamType": "MP4",
   "quality": "1080p",
-  "baseUrl": "https://animeworld.ac/",
+  "baseUrl": "https://www.animeworld.ac/",
   "searchBaseUrl": "https://www.animeworld.ac/search?keyword=%s",
   "scriptUrl": "https://raw.githubusercontent.com/Karelg86/media-player-anim/main/extractor.js",
   "type": "anime",
