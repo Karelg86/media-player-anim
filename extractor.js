@@ -144,33 +144,13 @@ async function extractEpisodes(url) {
 
 async function extractStreamUrl(url) {
   try {
-    const response = await soraFetch(url);
-    const html = await response.text();
-
-    // Estrai data-id dal link episodio corrispondente all'URL corrente
-    const urlPath = new URL(url).pathname;
-    const slug = urlPath.split("/").pop();
-
-    // Cerca data-id abbinato all'href dell'episodio corrente
-    const slugRegex = new RegExp(`data-id="([^"]+)"[^>]*href="[^"]*${slug}"`);
-    let match = html.match(slugRegex);
-
-    // Fallback: cerca l'episodio marcato come active
-    if (!match) {
-      match = html.match(/data-id="([^"]+)"[^>]*class="[^"]*active[^"]*"/);
-    }
-
-    if (!match) {
-      console.log("Stream: data-id non trovato");
-      return null;
-    }
-
-    const dataId = match[1];
-    console.log("Stream: data-id =", dataId);
+    // Il token dell'episodio è l'ultimo segmento dell'URL
+    // es: https://www.animeworld.ac/play/naruto-ita.Ze1Qv/NoZjU → "NoZjU"
+    const episodeToken = url.split("/").pop();
 
     // Chiama l'API interna di AnimeWorld
     const apiResponse = await soraFetch(
-      `https://www.animeworld.ac/api/episode/info?id=${dataId}&alt=0`,
+      `https://www.animeworld.ac/api/episode/info?id=${episodeToken}&alt=0`,
       {
         headers: {
           Referer: url,
@@ -179,8 +159,7 @@ async function extractStreamUrl(url) {
       }
     );
 
-    const data = await apiResponse.json();
-    console.log("Stream API response:", JSON.stringify(data));
+    const data = JSON.parse(await apiResponse.text());
 
     if (data && data.grabber) {
       return data.grabber;
