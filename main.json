@@ -1,0 +1,20 @@
+{
+  "sourceName": "AnimeWorld IT",
+  "iconUrl": "https://www.animeworld.ac/favicon.ico",
+  "author": {
+    "name": "sobet",
+    "icon": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRQPQ1qIiALbM3xDWGsuJzu6ItaQGwb9ICRRw&s"
+  },
+  "version": "1.0.0",
+  "language": "Italian",
+  "streamType": "HLS",
+  "quality": "1080p",
+  "baseUrl": "https://www.animeworld.ac/",
+  "searchBaseUrl": "https://www.animeworld.ac/search?keyword=%s",
+  "scriptUrl": "https://raw.githubusercontent.com/Karelg86/media-player-anim/main/extractor.js",
+  "type": "tv",
+  "asyncJS": true,
+  "supportsMojuru": true,
+  "supportsSora": true,
+  "supportsLuna": true
+}
