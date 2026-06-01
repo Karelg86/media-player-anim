@@ -144,27 +144,15 @@ async function extractEpisodes(url) {
 
 async function extractStreamUrl(url) {
   try {
-    // Il token dell'episodio è l'ultimo segmento dell'URL
-    // es: https://www.animeworld.ac/play/naruto-ita.Ze1Qv/NoZjU → "NoZjU"
     const episodeToken = url.split("/").pop();
-
-    // Chiama l'API interna di AnimeWorld
     const apiResponse = await soraFetch(
-      `https://www.animeworld.ac/api/episode/info?id=${episodeToken}&alt=0`,
-      {
-        headers: {
-          Referer: url,
-          "X-Requested-With": "XMLHttpRequest",
-        },
-      }
+      `https://www.animeworld.ac/api/episode/info?id=${episodeToken}&alt=0`
     );
-
-    const data = JSON.parse(await apiResponse.text());
-
+    const text = await apiResponse.text();
+    const data = JSON.parse(text);
     if (data && data.grabber) {
       return data.grabber;
     }
-
     return null;
   } catch (error) {
     console.log("Stream URL error:", error);
@@ -173,24 +161,14 @@ async function extractStreamUrl(url) {
 }
 
 
-async function soraFetch(
-  url,
-  options = { headers: {}, method: "GET", body: null, encoding: "utf-8" }
-) {
-  try {
-    return await fetchv2(
-      url,
-      options.headers ?? {},
-      options.method ?? "GET",
-      options.body ?? null,
-      true,
-      options.encoding ?? "utf-8"
-    );
-  } catch (e) {
+async function soraFetch(url, options = { headers: {}, method: 'GET', body: null }) {
     try {
-      return await fetch(url, options);
-    } catch (error) {
-      return null;
+        return await fetchv2(url, options.headers ?? {}, options.method ?? 'GET', options.body ?? null);
+    } catch (e) {
+        try {
+            return await fetch(url, options);
+        } catch (error) {
+            return null;
+        }
     }
-  }
 }
