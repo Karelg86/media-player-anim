@@ -1,18 +1,18 @@
 {
   "sourceName": "AnimeWorld IT",
-  "iconUrl": "https://www.animeworld.ac/favicon.ico",
+  "iconUrl": "https://raw.githubusercontent.com/cranci1/Ryu/d48d716ec6c5ef9ae7b3711c117f920b0c7eb1ce/Ryu/Assets.xcassets/Sources/AnimeWorld.imageset/animeworld.png",
   "author": {
     "name": "sobet",
     "icon": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRQPQ1qIiALbM3xDWGsuJzu6ItaQGwb9ICRRw&s"
   },
-  "version": "1.0.0",
+  "version": "1.0.5",
   "language": "Italian",
-  "streamType": "HLS",
+  "streamType": "MP4",
   "quality": "1080p",
-  "baseUrl": "https://www.animeworld.ac/",
+  "baseUrl": "https://animeworld.ac/",
   "searchBaseUrl": "https://www.animeworld.ac/search?keyword=%s",
   "scriptUrl": "https://raw.githubusercontent.com/Karelg86/media-player-anim/main/extractor.js",
-  "type": "tv",
+  "type": "anime",
   "asyncJS": true,
   "supportsMojuru": true,
   "supportsSora": true,

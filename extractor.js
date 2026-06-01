@@ -1,77 +1,103 @@
 async function searchResults(keyword) {
-    const response = await soraFetch(
-        `https://www.animeworld.ac/search?keyword=${encodeURIComponent(keyword)}`
-    );
-    const html = await response.text();
-    const results = [];
-    // Estrai i risultati dalla griglia: ogni card ha a.name (link+titolo) e a.poster img (immagine)
-    const cardRegex = /<div[^>]*class="[^"]*item[^"]*"[\s\S]*?<\/div>\s*<\/div>/g;
-    const nameRegex = /<a[^>]*class="[^"]*name[^"]*"[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/;
-    const imgRegex = /<a[^>]*class="[^"]*poster[^"]*"[\s\S]*?<img[^>]*src="([^"]*)"[^>]*>/;
-    // Approccio alternativo: cerca tutti i link con classe "name"
-    const allNameLinks = html.match(/<a[^>]*class="[^"]*name[^"]*"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g) || [];
-    const allPosterImgs = html.match(/<a[^>]*class="[^"]*poster[^"]*"[\s\S]*?<img[^>]*src="([^"]*)"[^>]*>/g) || [];
-    for (let i = 0; i < allNameLinks.length; i++) {
-        const nameMatch = allNameLinks[i].match(/href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/);
-        const imgMatch = allPosterImgs[i] ? allPosterImgs[i].match(/src="([^"]*)"/) : null;
-        if (nameMatch) {
-            const href = nameMatch[1].startsWith('http') ? nameMatch[1] : `https://www.animeworld.ac${nameMatch[1]}`;
-            const title = nameMatch[2].replace(/<[^>]*>/g, '').trim();
-            const image = imgMatch ? (imgMatch[1].startsWith('http') ? imgMatch[1] : `https://www.animeworld.ac${imgMatch[1]}`) : '';
-            if (title && href) {
-                results.push({ title, image, href });
+    try {
+        const response = await soraFetch(
+            `https://www.animeworld.ac/search?keyword=${encodeURIComponent(keyword)}`
+        );
+        const html = await response.text();
+        const results = [];
+        const animeItemRegex = /<div[^>]*class="[^"]*film-item[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/g;
+        const nameRegex = /<a[^>]*class="[^"]*name[^"]*"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/;
+        const posterRegex = /<a[^>]*class="[^"]*poster[^"]*"[^>]*href="([^"]*)"[^>]*>[\s\S]*?<img[^>]*src="([^"]*)"/;
+        let match;
+        while ((match = animeItemRegex.exec(html)) !== null) {
+            const block = match[1];
+            const nameMatch = nameRegex.exec(block);
+            const posterMatch = posterRegex.exec(block);
+            if (nameMatch) {
+                const rawHref = nameMatch[1];
+                const href = rawHref.startsWith("http") ? rawHref : `https://www.animeworld.ac${rawHref}`;
+                const title = nameMatch[2].replace(/<[^>]*>/g, "").trim();
+                let image = "";
+                if (posterMatch) {
+                    image = posterMatch[2].startsWith("http") ? posterMatch[2] : `https://www.animeworld.ac${posterMatch[2]}`;
+                }
+                if (title) results.push({ title, image, href });
             }
         }
+        // Fallback: approccio più semplice se regex sopra non trova nulla
+        if (results.length === 0) {
+            const simpleNameRegex = /<a[^>]*class="[^"]*name[^"]*"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g;
+            const simplePosterRegex = /<a[^>]*class="[^"]*poster[^"]*"[^>]*href="[^"]*"[^>]*>[\s\S]*?<img[^>]*src="([^"]*)"/g;
+            const names = [];
+            const posters = [];
+            let nm, pm;
+            while ((nm = simpleNameRegex.exec(html)) !== null) names.push(nm);
+            while ((pm = simplePosterRegex.exec(html)) !== null) posters.push(pm);
+            for (let i = 0; i < names.length; i++) {
+                const href = names[i][1].startsWith("http") ? names[i][1] : `https://www.animeworld.ac${names[i][1]}`;
+                const title = names[i][2].replace(/<[^>]*>/g, "").trim();
+                const image = posters[i] ? (posters[i][1].startsWith("http") ? posters[i][1] : `https://www.animeworld.ac${posters[i][1]}`) : "";
+                if (title) results.push({ title, image, href });
+            }
+        }
+        console.log("Search results:", JSON.stringify(results));
+        return JSON.stringify(results);
+    } catch (error) {
+        console.log("Search error:", error);
+        return JSON.stringify([]);
     }
-    return JSON.stringify(results);
 }
 
 async function extractDetails(url) {
-    // Normalizza l'URL alla pagina base dell'anime (senza episodio)
-    const baseUrl = url.replace(/\/[A-Za-z0-9]+$/, '');
-    const response = await soraFetch(baseUrl);
-    const html = await response.text();
-    // Descrizione
-    const descMatch = html.match(/<div[^>]*class="[^"]*desc[^"]*"[^>]*>([\s\S]*?)<\/div>/);
-    const description = descMatch ? descMatch[1].replace(/<[^>]*>/g, '').trim() : 'N/A';
-    // Titolo originale (spesso in un sottotitolo)
-    const origMatch = html.match(/<span[^>]*class="[^"]*title[^"]*"[^>]*>([\s\S]*?)<\/span>/);
-    const aliases = origMatch ? origMatch[1].replace(/<[^>]*>/g, '').trim() : 'N/A';
-    // Data di uscita
-    const yearMatch = html.match(/(\d{4})/);
-    const airdate = yearMatch ? yearMatch[1] : 'N/A';
-    return JSON.stringify([{ description, aliases, airdate }]);
+    try {
+        const response = await soraFetch(url);
+        const html = await response.text();
+        const details = [];
+        const descMatch = html.match(/<div[^>]*class="[^"]*desc[^"]*"[^>]*>([\s\S]*?)<\/div>/);
+        let description = descMatch ? descMatch[1].replace(/<[^>]*>/g, "").trim() : "";
+        const aliasesMatch = html.match(/Titolo Originale:\s*<\/dt>\s*<dd[^>]*>([^<]+)<\/dd>/);
+        let aliases = aliasesMatch ? aliasesMatch[1].trim() : "";
+        const airdateMatch = html.match(/Data di Uscita:<\/dt>\s*([^<]+)<\/dd>/);
+        let airdate = airdateMatch ? airdateMatch[1].trim() : "";
+        if (description && aliases && airdate) {
+            details.push({ description, aliases, airdate });
+        }
+        console.log(JSON.stringify(details));
+        return JSON.stringify(details);
+    } catch (error) {
+        console.log("Details error:", error);
+        return JSON.stringify([]);
+    }
 }
 
 async function extractEpisodes(url) {
     try {
-        // Normalizza l'URL alla pagina base dell'anime
-        const baseUrl = url.replace(/\/[A-Za-z0-9]+$/, '');
-        const response = await soraFetch(baseUrl);
+        const response = await soraFetch(url);
         const html = await response.text();
         const episodes = [];
-        // Tutti gli episodi sono già nel DOM sotto .episodes - estrai tutti i link <a>
-        const episodesSection = html.match(/<div[^>]*class="[^"]*episodes[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/);
-        const source = episodesSection ? episodesSection[1] : html;
-        const epLinks = source.match(/<a[^>]*href="(\/play\/[^"]+)"[^>]*>/g) || [];
-        const seen = new Set();
-        let number = 1;
-        for (const link of epLinks) {
-            const hrefMatch = link.match(/href="(\/play\/[^"]+)"/);
-            if (hrefMatch) {
-                const href = `https://www.animeworld.ac${hrefMatch[1]}`;
-                if (!seen.has(href)) {
-                    seen.add(href);
-                    episodes.push({ href, number: number++ });
-                }
+        const baseUrl = "https://animeworld.ac";
+        // Cerca il server attivo - lista episodi sotto il server selezionato
+        const serverActiveRegex = /<ul[^>]*class="[^"]*server[^"]*active[^"]*"[^>]*>([\s\S]*?)<\/ul>\s*<\/div>/;
+        const serverActiveMatch = html.match(serverActiveRegex);
+        if (!serverActiveMatch) {
+            console.log("Episodes: server active block not found");
+            return JSON.stringify(episodes);
+        }
+        const serverActiveContent = serverActiveMatch[1];
+        const episodeRegex = /\s*<a[^>]*?href="([^"]+)"[^>]*?>([^<]+)<\/a>/g;
+        let match;
+        while ((match = episodeRegex.exec(serverActiveContent)) !== null) {
+            let href = match[1];
+            const number = parseInt(match[2], 10);
+            if (!href.startsWith("https")) {
+                href = href.startsWith("/") ? baseUrl + href : baseUrl + "/" + href;
             }
+            episodes.push({ href, number });
         }
-        // Fallback: se non trovati episodi usa l'URL base come ep 1
-        if (episodes.length === 0) {
-            episodes.push({ href: baseUrl, number: 1 });
-        }
+        console.log(JSON.stringify(episodes));
         return JSON.stringify(episodes);
     } catch (error) {
+        console.log("Episodes error:", error);
         return JSON.stringify([]);
     }
 }
@@ -80,30 +106,19 @@ async function extractStreamUrl(url) {
     try {
         const response = await soraFetch(url);
         const html = await response.text();
-        // Cerca la configurazione JW Player: sources con file m3u8
-        const jwMatch = html.match(/sources\s*:\s*\[\s*\{[^}]*file\s*:\s*['"]([^'"]+)['"]/);
-        if (jwMatch) return jwMatch[1];
-        // Fallback: cerca direttamente un link m3u8
-        const m3u8Match = html.match(/(https?:\/\/[^'"<>\s]+\.m3u8[^'"<>\s]*)/);
-        if (m3u8Match) return m3u8Match[1];
-        // Cerca un iframe embed
-        const iframeMatch = html.match(/<iframe[^>]*src="([^"]+)"/);
-        if (iframeMatch) {
-            const embedUrl = iframeMatch[1].replace(/&amp;/g, '&');
-            const response2 = await soraFetch(embedUrl);
-            const html2 = await response2.text();
-            const m3u8Match2 = html2.match(/(https?:\/\/[^'"<>\s]+\.m3u8[^'"<>\s]*)/);
-            if (m3u8Match2) return m3u8Match2[1];
-        }
-        return null;
+        // Link diretto MP4 via alternativeDownloadLink
+        const idRegex = /<a[^>]+href="([^"]+)"[^>]*id="alternativeDownloadLink"/;
+        const match = html.match(idRegex);
+        return match ? match[1] : null;
     } catch (error) {
+        console.log("Stream URL error:", error);
         return null;
     }
 }
 
-async function soraFetch(url, options = { headers: {}, method: 'GET', body: null }) {
+async function soraFetch(url, options = { headers: {}, method: "GET", body: null, encoding: "utf-8" }) {
     try {
-        return await fetchv2(url, options.headers ?? {}, options.method ?? 'GET', options.body ?? null);
+        return await fetchv2(url, options.headers ?? {}, options.method ?? "GET", options.body ?? null, true, options.encoding ?? "utf-8");
     } catch (e) {
         try {
             return await fetch(url, options);
