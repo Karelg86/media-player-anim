@@ -147,14 +147,52 @@ async function extractStreamUrl(url) {
     const response = await soraFetch(url);
     const html = await response.text();
 
-    const idRegex = /<a[^>]+href="([^"]+)"[^>]*id="alternativeDownloadLink"/;
-    const match = html.match(idRegex);
-    return match ? match[1] : null;
+    // Estrai data-id dal link episodio corrispondente all'URL corrente
+    const urlPath = new URL(url).pathname;
+    const slug = urlPath.split("/").pop();
+
+    // Cerca data-id abbinato all'href dell'episodio corrente
+    const slugRegex = new RegExp(`data-id="([^"]+)"[^>]*href="[^"]*${slug}"`);
+    let match = html.match(slugRegex);
+
+    // Fallback: cerca l'episodio marcato come active
+    if (!match) {
+      match = html.match(/data-id="([^"]+)"[^>]*class="[^"]*active[^"]*"/);
+    }
+
+    if (!match) {
+      console.log("Stream: data-id non trovato");
+      return null;
+    }
+
+    const dataId = match[1];
+    console.log("Stream: data-id =", dataId);
+
+    // Chiama l'API interna di AnimeWorld
+    const apiResponse = await soraFetch(
+      `https://www.animeworld.ac/api/episode/info?id=${dataId}&alt=0`,
+      {
+        headers: {
+          Referer: url,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+      }
+    );
+
+    const data = await apiResponse.json();
+    console.log("Stream API response:", JSON.stringify(data));
+
+    if (data && data.grabber) {
+      return data.grabber;
+    }
+
+    return null;
   } catch (error) {
     console.log("Stream URL error:", error);
     return null;
   }
 }
+
 
 async function soraFetch(
   url,
