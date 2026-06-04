@@ -123,27 +123,26 @@ async function extractEpisodes(url) {
 
 async function extractStreamUrl(url) {
   try {
-    const response = await soraFetch(url);
-    if (!response) return null;
-    const html = await response.text();
+    const episodeToken = url.split("/").pop();
+    console.log("Stream: fetching API for token:", episodeToken);
 
-    const patterns = [
-      /"grabber"\s*:\s*"(https?:\/\/[^"]+)"/,
-      /file\s*:\s*["'](https?:\/\/[^"']+\.mp4[^"']*?)["']/,
-      /<source[^>]+src=["'](https?:\/\/[^"']+)["']/,
-      /data-src=["'](https?:\/\/[^"']+\.mp4[^"']*?)["']/,
-      /window\.VIDEO_URL\s*=\s*["'](https?:\/\/[^"']+)["']/,
-    ];
-
-    for (const pattern of patterns) {
-      const match = html.match(pattern);
-      if (match && match[1]) {
-        console.log("Stream found with pattern:", pattern, "->", match[1]);
-        return match[1];
-      }
+    const apiResponse = await soraFetch(
+      `https://www.animeworld.ac/api/episode/info?id=${episodeToken}&alt=0`
+    );
+    if (!apiResponse) {
+      console.log("Stream: soraFetch returned null");
+      return null;
     }
 
-    console.log("Stream URL: no pattern matched in page HTML");
+    const text = await apiResponse.text();
+    console.log("Stream API response:", text);
+
+    const data = JSON.parse(text);
+    if (data && data.grabber) {
+      return data.grabber;
+    }
+
+    console.log("Stream: grabber missing or null in response");
     return null;
   } catch (error) {
     console.log("Stream URL error:", error);
