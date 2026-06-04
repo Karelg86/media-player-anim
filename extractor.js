@@ -139,62 +139,45 @@ async function extractEpisodes(url) {
 
 async function extractStreamUrl(url) {
   try {
-    // Estrai data-id dal fragment se presente, altrimenti usa token dall'URL
-    const fragmentIndex = url.indexOf("#");
-    let episodeId;
-    let cleanUrl;
-    if (fragmentIndex !== -1) {
-      episodeId = url.substring(fragmentIndex + 1);
-      cleanUrl = url.substring(0, fragmentIndex);
-    } else {
-      cleanUrl = url;
-      episodeId = url.split("/").pop();
-    }
-    console.log("Stream: episodeId =", episodeId);
+    const cleanUrl = url.indexOf("#") !== -1 ? url.substring(0, url.indexOf("#")) : url;
 
-    // Fetch homepage per estrarre cookie anti-bot (come fa AnimeWorld-API ufficiale)
-    let cookieHeader = "";
-    const homeResponse = await soraFetch("https://www.animeworld.ac/");
-    if (homeResponse) {
-      const homeHtml = await homeResponse.text();
-      const cookieMatch = homeHtml.match(/document\.cookie\s*=\s*"([^=]+)=([^;"\s]+)/);
-      if (cookieMatch) {
-        cookieHeader = `${cookieMatch[1]}=${cookieMatch[2]}`;
-        console.log("Stream: anti-bot cookie found:", cookieMatch[1]);
-      }
-      const csrfMatch = homeHtml.match(/<meta[^>]+id="csrf-token"[^>]+content="([^"]+)"/);
-      if (csrfMatch) {
-        console.log("Stream: csrf-token found");
-      }
-    }
+    // Usa networkFetchNative: browser reale (WKWebView) che bypassa Cloudflare,
+    // esegue il player JS e cattura automaticamente tutti gli URL .mp4 caricati.
+    const result = await new Promise((resolve, reject) => {
+      networkFetchNative(
+        cleanUrl,
+        {
+          timeoutSeconds: 15,
+          cutoff: ".mp4",
+          returnHTML: false,
+          returnCookies: false
+        },
+        resolve,
+        reject
+      );
+    });
 
-    const headers = {
-      "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
-      "Accept": "application/json, text/plain, */*",
-      "Accept-Language": "it-IT,it;q=0.9",
-      "X-Requested-With": "XMLHttpRequest",
-      "Referer": cleanUrl,
-    };
-    if (cookieHeader) headers["Cookie"] = cookieHeader;
-
-    const apiResponse = await soraFetch(
-      `https://www.animeworld.ac/api/episode/info?id=${episodeId}&alt=0`,
-      { headers: headers, method: "GET", body: null }
-    );
-    if (!apiResponse) {
-      console.log("Stream: soraFetch returned null");
+    if (!result || !result.success) {
+      console.log("Stream: networkFetch failed");
       return null;
     }
 
-    const text = await apiResponse.text();
-    console.log("Stream API response:", text);
-
-    const data = JSON.parse(text);
-    if (data && data.grabber) {
-      return data.grabber;
+    // cutoff triggera appena trova il primo .mp4
+    if (result.cutoffTriggered && result.cutoffUrl) {
+      console.log("Stream: found via cutoff:", result.cutoffUrl);
+      return result.cutoffUrl;
     }
 
-    console.log("Stream: grabber missing or null in response");
+    // Cerca tra tutti gli URL catturati durante il caricamento della pagina
+    if (result.requests && result.requests.length > 0) {
+      const mp4 = result.requests.find(r => r.includes(".mp4"));
+      if (mp4) {
+        console.log("Stream: found in requests:", mp4);
+        return mp4;
+      }
+    }
+
+    console.log("Stream: no MP4 found. Requests:", JSON.stringify(result.requests));
     return null;
   } catch (error) {
     console.log("Stream URL error:", error);
