@@ -204,7 +204,13 @@ async function extractStreamUrl(url) {
 
 async function soraFetch(url, options = { headers: {}, method: 'GET', body: null }) {
     try {
-        return await fetchv2(url, options.headers ?? {}, options.method ?? 'GET', options.body ?? null);
+        const response = await fetchv2(url, options.headers ?? {}, options.method ?? 'GET', options.body ?? null);
+        // fetchv2 risolve sempre (mai reject), anche in caso di errore.
+        // Se status è undefined significa che ha restituito {error: "..."} → fallback.
+        if (response && response.status !== undefined) {
+            return response;
+        }
+        throw new Error('fetchv2 error response');
     } catch (e) {
         try {
             return await fetch(url, options);
