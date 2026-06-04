@@ -142,26 +142,28 @@ async function extractStreamUrl(url) {
     const cleanUrl = url.indexOf("#") !== -1 ? url.substring(0, url.indexOf("#")) : url;
     const episodeId = cleanUrl.split("/").pop();
 
-    // Metodo 1: API diretta (rapida, funziona per molti anime)
-    const apiResponse = await soraFetch(
-      `https://www.animeworld.ac/api/episode/info?id=${episodeId}&alt=0`
-    );
-    if (apiResponse) {
-      const text = await apiResponse.text();
-      if (text) {
-        try {
-          const data = JSON.parse(text);
-          if (data && data.grabber) {
-            console.log("Stream: found via API");
-            return data.grabber;
-          }
-        } catch (e) {}
-      }
+    // Step 1: API diretta senza cookies (rapida, funziona per molti anime)
+    const direct = await callApi(episodeId, {});
+    if (direct) return direct;
+
+    // Step 2: Carica homepage con WebView reale per ottenere i cookie Cloudflare,
+    // poi riprova l'API con quei cookie
+    const homeResult = await new Promise((resolve, reject) => {
+      networkFetchNative(
+        "https://www.animeworld.ac/",
+        { timeoutSeconds: 12, returnHTML: false, returnCookies: true },
+        resolve,
+        reject
+      );
+    });
+    if (homeResult && homeResult.cookies && Object.keys(homeResult.cookies).length > 0) {
+      const cookieString = Object.entries(homeResult.cookies)
+        .map(([k, v]) => `${k}=${v}`).join("; ");
+      const withCookies = await callApi(episodeId, { "Cookie": cookieString });
+      if (withCookies) return withCookies;
     }
 
-    // Metodo 2: WebView reale — carica la pagina come un browser,
-    // bypassa Cloudflare ed intercetta gli URL video caricati dal player
-    console.log("Stream: API failed, trying WebView");
+    // Step 3: WebView sulla pagina episodio — intercetta l'URL MP4 dal player
     const result = await new Promise((resolve, reject) => {
       networkFetchNative(
         cleanUrl,
@@ -170,25 +172,37 @@ async function extractStreamUrl(url) {
         reject
       );
     });
-
     if (result && result.success) {
-      if (result.cutoffTriggered && result.cutoffUrl) {
-        console.log("Stream: found via WebView cutoff");
-        return result.cutoffUrl;
-      }
-      if (result.requests && result.requests.length > 0) {
-        const videoUrl = result.requests.find(r => r.includes(".mp4") || r.includes(".m3u8"));
-        if (videoUrl) {
-          console.log("Stream: found in WebView requests");
-          return videoUrl;
-        }
-      }
+      if (result.cutoffTriggered && result.cutoffUrl) return result.cutoffUrl;
+      const videoUrl = result.requests &&
+        result.requests.find(r => r.includes(".mp4") || r.includes(".m3u8"));
+      if (videoUrl) return videoUrl;
     }
 
-    console.log("Stream: no URL found");
     return null;
   } catch (error) {
     console.log("Stream URL error:", error);
+    return null;
+  }
+}
+
+async function callApi(episodeId, extraHeaders) {
+  try {
+    const headers = {
+      "Accept": "application/json, text/plain, */*",
+      "X-Requested-With": "XMLHttpRequest",
+      ...extraHeaders
+    };
+    const res = await soraFetch(
+      `https://www.animeworld.ac/api/episode/info?id=${episodeId}&alt=0`,
+      { headers, method: "GET", body: null }
+    );
+    if (!res) return null;
+    const text = await res.text();
+    if (!text) return null;
+    const data = JSON.parse(text);
+    return (data && data.grabber) ? data.grabber : null;
+  } catch (e) {
     return null;
   }
 }
