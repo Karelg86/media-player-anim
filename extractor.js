@@ -125,10 +125,12 @@ async function extractStreamUrl(url) {
   try {
     const episodeToken = url.split("/").pop();
     const apiResponse = await soraFetch(
-      `https://www.animeworld.ac/api/episode/info?id=${episodeToken}&alt=0`
+      `https://www.animeworld.ac/api/episode/info?id=${episodeToken}&alt=0`,
+      { headers: { "Referer": url }, method: "GET", body: null }
     );
     if (!apiResponse) return null;
     const text = await apiResponse.text();
+    console.log("Stream API raw response:", text);
     const data = JSON.parse(text);
     if (data && data.grabber) {
       return data.grabber;
