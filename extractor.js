@@ -126,8 +126,17 @@ async function extractStreamUrl(url) {
     const episodeToken = url.split("/").pop();
     console.log("Stream: fetching API for token:", episodeToken);
 
+    const headers = {
+      "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+      "Accept": "application/json, text/plain, */*",
+      "Accept-Language": "it-IT,it;q=0.9",
+      "X-Requested-With": "XMLHttpRequest",
+      "Referer": url,
+    };
+
     const apiResponse = await soraFetch(
-      `https://www.animeworld.ac/api/episode/info?id=${episodeToken}&alt=0`
+      `https://www.animeworld.ac/api/episode/info?id=${episodeToken}&alt=0`,
+      { headers: headers, method: "GET", body: null }
     );
     if (!apiResponse) {
       console.log("Stream: soraFetch returned null");
