@@ -140,44 +140,52 @@ async function extractEpisodes(url) {
 async function extractStreamUrl(url) {
   try {
     const cleanUrl = url.indexOf("#") !== -1 ? url.substring(0, url.indexOf("#")) : url;
+    const episodeId = cleanUrl.split("/").pop();
 
-    // Usa networkFetchNative: browser reale (WKWebView) che bypassa Cloudflare,
-    // esegue il player JS e cattura automaticamente tutti gli URL .mp4 caricati.
+    // Metodo 1: API diretta (rapida, funziona per molti anime)
+    const apiResponse = await soraFetch(
+      `https://www.animeworld.ac/api/episode/info?id=${episodeId}&alt=0`
+    );
+    if (apiResponse) {
+      const text = await apiResponse.text();
+      if (text) {
+        try {
+          const data = JSON.parse(text);
+          if (data && data.grabber) {
+            console.log("Stream: found via API");
+            return data.grabber;
+          }
+        } catch (e) {}
+      }
+    }
+
+    // Metodo 2: WebView reale — carica la pagina come un browser,
+    // bypassa Cloudflare ed intercetta gli URL video caricati dal player
+    console.log("Stream: API failed, trying WebView");
     const result = await new Promise((resolve, reject) => {
       networkFetchNative(
         cleanUrl,
-        {
-          timeoutSeconds: 15,
-          cutoff: ".mp4",
-          returnHTML: false,
-          returnCookies: false
-        },
+        { timeoutSeconds: 20, cutoff: ".mp4", returnHTML: false, returnCookies: false },
         resolve,
         reject
       );
     });
 
-    if (!result || !result.success) {
-      console.log("Stream: networkFetch failed");
-      return null;
-    }
-
-    // cutoff triggera appena trova il primo .mp4
-    if (result.cutoffTriggered && result.cutoffUrl) {
-      console.log("Stream: found via cutoff:", result.cutoffUrl);
-      return result.cutoffUrl;
-    }
-
-    // Cerca tra tutti gli URL catturati durante il caricamento della pagina
-    if (result.requests && result.requests.length > 0) {
-      const mp4 = result.requests.find(r => r.includes(".mp4"));
-      if (mp4) {
-        console.log("Stream: found in requests:", mp4);
-        return mp4;
+    if (result && result.success) {
+      if (result.cutoffTriggered && result.cutoffUrl) {
+        console.log("Stream: found via WebView cutoff");
+        return result.cutoffUrl;
+      }
+      if (result.requests && result.requests.length > 0) {
+        const videoUrl = result.requests.find(r => r.includes(".mp4") || r.includes(".m3u8"));
+        if (videoUrl) {
+          console.log("Stream: found in WebView requests");
+          return videoUrl;
+        }
       }
     }
 
-    console.log("Stream: no MP4 found. Requests:", JSON.stringify(result.requests));
+    console.log("Stream: no URL found");
     return null;
   } catch (error) {
     console.log("Stream URL error:", error);
