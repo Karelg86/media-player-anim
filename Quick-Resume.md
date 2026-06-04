@@ -23,21 +23,22 @@ Questo file serve come manuale di riferimento rapido per l'IA. Delinea la proced
 1. **`searchResults(keyword)`**: Cerca su `https://www.animeworld.ac/search?keyword=...` — estrae titoli dalla `<div class="film-list">`, ogni item ha `class="name"` (titolo/link) e `class="poster"` (immagine)
 2. **`extractDetails(url)`**: Estrae descrizione (`<div class="desc">`), titolo originale (`<h2 class="title" data-jtitle="...">`), data uscita (`Data di Uscita:`)
 3. **`extractEpisodes(url)`**: Trova episodi nel blocco `<div class="server active">`, ogni episodio è `<li class="episode"><a href="/play/...">`
-4. **`extractStreamUrl(url)`**: Prende il token dall'ultimo segmento URL (es. `NoZjU` da `.../NoZjU`), chiama API `https://www.animeworld.ac/api/episode/info?id=TOKEN&alt=0`, restituisce `data.grabber` (URL MP4 diretto)
+4. **`extractStreamUrl(url)`**: Carica la pagina dell'episodio e cerca il link video con regex multipli sull'HTML della pagina (vedi sezione dedicata)
 
-### Dettagli API
+### Dettagli `extractStreamUrl` (aggiornato)
 
-- **Endpoint stream:** `GET https://www.animeworld.ac/api/episode/info?id={episodeToken}&alt=0`
-- **Risposta:** `{"grabber":"https://srv28.../file.mp4","name":"TOKEN","target":"/api/episode/serverPlayerAnimeWorld?id=TOKEN"}`
-- **Formato video:** MP4 diretto (NON HLS/m3u8)
-- **Non serve** header `X-Requested-With` o `Referer` — funziona senza header custom
+- **NON usa più l'API** `/api/episode/info` — viene bloccata da AnimeWorld con "Could not connect to the server" in `fetchV2NativeFunction`
+- **Approccio attuale:** `soraFetch(url)` sulla pagina episodio, poi cerca il link video con questi pattern in ordine:
+  1. `"grabber":"https://..."` — campo JSON embeddato nella pagina
+  2. `file: "https://...*.mp4"` — formato player JW/VideoJS
+  3. `<source src="https://...">` — tag HTML5 video
+  4. `data-src="https://...*.mp4"` — attributo lazy-load
+  5. `window.VIDEO_URL = "https://..."` — variabile JS globale
+- Se nessun pattern matcha, il log riporta `"Stream URL: no pattern matched in page HTML"`
 
-### Token episodio
+### Formato video
 
-I token sono stringhe alfanumeriche (es. `NoZjU`, `WKyvz`, `3nvDT`) che identificano univocamente ogni episodio. Si trovano:
-- Come ultimo segmento dell'URL episodio: `/play/anime-slug.ID/TOKEN`
-- Nel JavaScript della pagina: `window.episodeToken = "TOKEN"`
-- Negli attributi HTML: `data-id="TOKEN"`
+- **Formato atteso:** MP4 diretto (NON HLS/m3u8) — dichiarato in `main.json` come `"streamType": "MP4"`
 
 ## ⚠️ Problemi noti e soluzioni
 
@@ -46,11 +47,26 @@ I token sono stringhe alfanumeriche (es. `NoZjU`, `WKyvz`, `3nvDT`) che identifi
 - **`fetchv2` di SORA NON segue i redirect!**
 - **Soluzione:** Usare SEMPRE `https://www.animeworld.ac` con `www` in tutti gli URL
 
-### 2. `alternativeDownloadLink` rimosso
-- Il vecchio metodo (usato dal reference Luna) non esiste più nel DOM
-- **Soluzione:** Usare l'API `/api/episode/info` (implementata nel nostro extractor)
+### 2. API `/api/episode/info` bloccata
+- L'endpoint `GET /api/episode/info?id=TOKEN&alt=0` restituisce "Could not connect to the server" in `fetchV2NativeFunction`
+- L'API richiede probabilmente una sessione/cookie valida che il fetch nativo dell'app non fornisce
+- **Soluzione:** Bypassare l'API e leggere il link video direttamente dall'HTML della pagina episodio (implementato)
 
-### 3. `soraFetch` - firma compatibile SORA
+### 3. `extractDetails` ritornava array vuoto
+- La vecchia condizione `if (description && aliases && airdate)` richiedeva tutti e tre i campi presenti
+- Se anche uno solo era vuoto, la funzione ritornava `[]` e Luna non mostrava l'anime
+- **Soluzione:** Push sempre con i campi disponibili (anche vuoti)
+
+### 4. `filmListRegex` dipendeva da `clearfix`
+- La vecchia regex cercava `<div class="clearfix"></div>` come boundary del film-list
+- Se AnimeWorld rimuoveva o spostava quel div, `searchResults` ritornava `[]`
+- **Soluzione:** Regex semplificata che non dipende dal clearfix
+
+### 5. `alternativeDownloadLink` rimosso
+- Il vecchio metodo (usato dal reference Luna) non esiste più nel DOM
+- **Soluzione:** Usare il parsing diretto della pagina episodio (implementato)
+
+### 6. `soraFetch` - firma compatibile SORA
 - Usare la stessa firma di StreamingCommunity: `fetchv2(url, headers, method, body)` — **4 parametri**
 - NON usare parametri extra come `true` o `encoding` (Luna li supporta, SORA no)
 
@@ -78,7 +94,7 @@ Quando l'utente comunica che il dominio è cambiato e fornisce quello nuovo (es.
 
 5. **Avvisare l'utente**:
    - Confermare che i file sono stati aggiornati e pushati su GitHub.
-   - Ricordare di chiudere l'app SORA completamente (o ricaricare il modulo).
+   - Ricordare di chiudere l'app completamente (o ricaricare il modulo).
 
 ---
 **Dominio corrente configurato nei file:** `www.animeworld.ac`
