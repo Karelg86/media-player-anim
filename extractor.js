@@ -99,18 +99,34 @@ async function extractEpisodes(url) {
     }
 
     const serverActiveContent = serverActiveMatch[1];
-    const episodeRegex = /<li class="episode">\s*<a[^>]*?href="([^"]+)"[^>]*?>([^<]+)<\/a>/g;
+    // Cattura href, data-id e numero episodio
+    const episodeRegex = /<li class="episode">\s*<a[^>]*?href="([^"]+)"[^>]*?data-id="([^"]+)"[^>]*?>([^<]+)<\/a>/g;
     let match;
 
     while ((match = episodeRegex.exec(serverActiveContent)) !== null) {
       let href = match[1];
-      const number = parseInt(match[2], 10);
+      const dataId = match[2];
+      const number = parseInt(match[3], 10);
 
       if (!href.startsWith("https")) {
         href = href.startsWith("/") ? baseUrl + href : baseUrl + "/" + href;
       }
 
-      episodes.push({ href: href, number: number });
+      // Encode data-id nel fragment dell'URL così extractStreamUrl può usarlo
+      episodes.push({ href: href + "#" + dataId, number: number });
+    }
+
+    // Fallback: regex senza data-id se il primo non ha trovato nulla
+    if (episodes.length === 0) {
+      const fallbackRegex = /<li class="episode">\s*<a[^>]*?href="([^"]+)"[^>]*?>([^<]+)<\/a>/g;
+      while ((match = fallbackRegex.exec(serverActiveContent)) !== null) {
+        let href = match[1];
+        const number = parseInt(match[2], 10);
+        if (!href.startsWith("https")) {
+          href = href.startsWith("/") ? baseUrl + href : baseUrl + "/" + href;
+        }
+        episodes.push({ href: href, number: number });
+      }
     }
 
     console.log("Episodes:", JSON.stringify(episodes));
@@ -123,19 +139,46 @@ async function extractEpisodes(url) {
 
 async function extractStreamUrl(url) {
   try {
-    const episodeToken = url.split("/").pop();
-    console.log("Stream: fetching API for token:", episodeToken);
+    // Estrai data-id dal fragment se presente, altrimenti usa token dall'URL
+    const fragmentIndex = url.indexOf("#");
+    let episodeId;
+    let cleanUrl;
+    if (fragmentIndex !== -1) {
+      episodeId = url.substring(fragmentIndex + 1);
+      cleanUrl = url.substring(0, fragmentIndex);
+    } else {
+      cleanUrl = url;
+      episodeId = url.split("/").pop();
+    }
+    console.log("Stream: episodeId =", episodeId);
+
+    // Fetch homepage per estrarre cookie anti-bot (come fa AnimeWorld-API ufficiale)
+    let cookieHeader = "";
+    const homeResponse = await soraFetch("https://www.animeworld.ac/");
+    if (homeResponse) {
+      const homeHtml = await homeResponse.text();
+      const cookieMatch = homeHtml.match(/document\.cookie\s*=\s*"([^=]+)=([^;"\s]+)/);
+      if (cookieMatch) {
+        cookieHeader = `${cookieMatch[1]}=${cookieMatch[2]}`;
+        console.log("Stream: anti-bot cookie found:", cookieMatch[1]);
+      }
+      const csrfMatch = homeHtml.match(/<meta[^>]+id="csrf-token"[^>]+content="([^"]+)"/);
+      if (csrfMatch) {
+        console.log("Stream: csrf-token found");
+      }
+    }
 
     const headers = {
       "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
       "Accept": "application/json, text/plain, */*",
       "Accept-Language": "it-IT,it;q=0.9",
       "X-Requested-With": "XMLHttpRequest",
-      "Referer": url,
+      "Referer": cleanUrl,
     };
+    if (cookieHeader) headers["Cookie"] = cookieHeader;
 
     const apiResponse = await soraFetch(
-      `https://www.animeworld.ac/api/episode/info?id=${episodeToken}&alt=0`,
+      `https://www.animeworld.ac/api/episode/info?id=${episodeId}&alt=0`,
       { headers: headers, method: "GET", body: null }
     );
     if (!apiResponse) {
