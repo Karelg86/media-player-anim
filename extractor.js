@@ -1,11 +1,47 @@
+/**
+ * Shirox / Sora / Luna Module Extractor - AnimeWorld IT
+ * Versione: 1.0.6
+ *
+ * Novità v1.0.6:
+ * - Dominio in un solo punto (CONFIG.BASE)
+ * - decodeEntities su titoli, trama e titolo originale (es. &#x27; -> ')
+ * - Episodi letti indipendentemente dall'ordine degli attributi HTML
+ * - Pulizia: il data-id coincide con l'ultimo segmento dell'URL episodio, niente più fragment #data-id
+ */
+
+const CONFIG = {
+  BASE: "https://www.animeworld.ac",
+};
+
+// --- UTILITY ---
+function decodeEntities(str = "") {
+  return str
+    .replace(/&amp;/g, "&")
+    .replace(/&#0*39;|&#x0*27;|&apos;/gi, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
+// Rimuove i tag HTML e normalizza gli spazi (per la trama)
+function stripTags(str = "") {
+  return str.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "").replace(/[ \t]+/g, " ").trim();
+}
+
+function absUrl(href) {
+  if (!href) return "";
+  if (/^https?:\/\//.test(href)) return href;
+  return href.startsWith("/") ? CONFIG.BASE + href : CONFIG.BASE + "/" + href;
+}
+
+// ==========================================
+// 1. RICERCA
+// ==========================================
 async function searchResults(keyword) {
   const results = [];
-  const baseUrl = "https://www.animeworld.ac";
 
   try {
-    const response = await soraFetch(
-      `${baseUrl}/search?keyword=${encodeURIComponent(keyword)}`
-    );
+    const response = await soraFetch(`${CONFIG.BASE}/search?keyword=${encodeURIComponent(keyword)}`);
     if (!response) return JSON.stringify([]);
     const html = await response.text();
 
@@ -23,30 +59,21 @@ async function searchResults(keyword) {
       const itemHtml = itemMatch[0];
 
       const imgMatch = itemHtml.match(/src="([^"]+)"/);
-      let imageUrl = imgMatch ? imgMatch[1] : "";
-
       const titleMatch = itemHtml.match(/class="name">([^<]+)</);
-      const title = titleMatch ? titleMatch[1] : "";
-
       const hrefMatch = itemHtml.match(/href="([^"]+)"/);
-      let href = hrefMatch ? hrefMatch[1] : "";
+
+      const title = titleMatch ? decodeEntities(titleMatch[1]).trim() : "";
+      const href = hrefMatch ? absUrl(hrefMatch[1]) : "";
 
       if (title && href) {
-        if (imageUrl && !imageUrl.startsWith("https")) {
-          imageUrl = imageUrl.startsWith("/") ? baseUrl + imageUrl : baseUrl + "/" + imageUrl;
-        }
-        if (!href.startsWith("https")) {
-          href = href.startsWith("/") ? baseUrl + href : baseUrl + "/" + href;
-        }
         results.push({
-          title: title.trim(),
-          image: imageUrl,
+          title: title,
+          image: imgMatch ? absUrl(imgMatch[1]) : "",
           href: href,
         });
       }
     }
 
-    console.log("Search results:", JSON.stringify(results));
     return JSON.stringify(results);
   } catch (error) {
     console.log("Search error:", error);
@@ -54,6 +81,9 @@ async function searchResults(keyword) {
   }
 }
 
+// ==========================================
+// 2. DETTAGLI
+// ==========================================
 async function extractDetails(url) {
   try {
     const response = await soraFetch(url);
@@ -61,28 +91,23 @@ async function extractDetails(url) {
     const html = await response.text();
 
     const descriptionMatch = html.match(/<div class="desc">([\s\S]*?)<\/div>/);
-    const description = descriptionMatch ? descriptionMatch[1].trim() : "";
-
     const aliasesMatch = html.match(/<h2 class="title" data-jtitle="([^"]+)">/);
-    const aliases = aliasesMatch ? aliasesMatch[1] : "";
-
     const airdateMatch = html.match(/<dt>Data di Uscita:<\/dt>\s*<dd>([^<]+)<\/dd>/);
-    const airdate = airdateMatch ? airdateMatch[1].trim() : "";
 
-    const details = [{
-      description: description,
-      aliases: aliases,
-      airdate: airdate,
-    }];
-
-    console.log("Details:", JSON.stringify(details));
-    return JSON.stringify(details);
+    return JSON.stringify([{
+      description: descriptionMatch ? decodeEntities(stripTags(descriptionMatch[1])) : "",
+      aliases: aliasesMatch ? decodeEntities(aliasesMatch[1]) : "",
+      airdate: airdateMatch ? airdateMatch[1].trim() : "",
+    }]);
   } catch (error) {
     console.log("Details error:", error);
     return JSON.stringify([]);
   }
 }
 
+// ==========================================
+// 3. EPISODI
+// ==========================================
 async function extractEpisodes(url) {
   try {
     const response = await soraFetch(url);
@@ -90,7 +115,6 @@ async function extractEpisodes(url) {
     const html = await response.text();
 
     const episodes = [];
-    const baseUrl = "https://www.animeworld.ac";
 
     const serverActiveMatch = html.match(/<div class="server active"[^>]*>([\s\S]*?)<\/ul>\s*<\/div>/);
     if (!serverActiveMatch) {
@@ -98,38 +122,25 @@ async function extractEpisodes(url) {
       return JSON.stringify(episodes);
     }
 
-    const serverActiveContent = serverActiveMatch[1];
-    // Cattura href, data-id e numero episodio
-    const episodeRegex = /<li class="episode">\s*<a[^>]*?href="([^"]+)"[^>]*?data-id="([^"]+)"[^>]*?>([^<]+)<\/a>/g;
+    // Ogni episodio: <li class="episode"><a data-id="..." data-num="1" ... href="/play/...">1</a>
+    // Gli attributi vengono letti singolarmente, quindi l'ordine nell'HTML non conta.
+    const episodeRegex = /<li class="episode"[^>]*>\s*<a([^>]*)>([^<]*)<\/a>/g;
     let match;
 
-    while ((match = episodeRegex.exec(serverActiveContent)) !== null) {
-      let href = match[1];
-      const dataId = match[2];
-      const number = parseInt(match[3], 10);
+    while ((match = episodeRegex.exec(serverActiveMatch[1])) !== null) {
+      const attrs = match[1];
+      const hrefMatch = attrs.match(/href="([^"]+)"/);
+      if (!hrefMatch) continue;
 
-      if (!href.startsWith("https")) {
-        href = href.startsWith("/") ? baseUrl + href : baseUrl + "/" + href;
-      }
+      const numMatch = attrs.match(/data-num="([^"]+)"/);
+      const number = parseInt(numMatch ? numMatch[1] : match[2], 10);
 
-      // Encode data-id nel fragment dell'URL così extractStreamUrl può usarlo
-      episodes.push({ href: href + "#" + dataId, number: number });
+      episodes.push({
+        href: absUrl(hrefMatch[1]),
+        number: Number.isNaN(number) ? episodes.length + 1 : number,
+      });
     }
 
-    // Fallback: regex senza data-id se il primo non ha trovato nulla
-    if (episodes.length === 0) {
-      const fallbackRegex = /<li class="episode">\s*<a[^>]*?href="([^"]+)"[^>]*?>([^<]+)<\/a>/g;
-      while ((match = fallbackRegex.exec(serverActiveContent)) !== null) {
-        let href = match[1];
-        const number = parseInt(match[2], 10);
-        if (!href.startsWith("https")) {
-          href = href.startsWith("/") ? baseUrl + href : baseUrl + "/" + href;
-        }
-        episodes.push({ href: href, number: number });
-      }
-    }
-
-    console.log("Episodes:", JSON.stringify(episodes));
     return JSON.stringify(episodes);
   } catch (error) {
     console.log("Episodes error:", error);
@@ -137,9 +148,14 @@ async function extractEpisodes(url) {
   }
 }
 
+// ==========================================
+// 4. ESTRAZIONE STREAM
+// ==========================================
 async function extractStreamUrl(url) {
   try {
+    // Compatibilità con episodi salvati dalla v1.0.5 (href#data-id): il fragment viene ignorato
     const cleanUrl = url.indexOf("#") !== -1 ? url.substring(0, url.indexOf("#")) : url;
+    // L'ultimo segmento dell'URL coincide con il data-id usato dall'API
     const episodeId = cleanUrl.split("/").pop();
 
     // Step 1: API diretta senza cookies (rapida, funziona per molti anime)
@@ -150,7 +166,7 @@ async function extractStreamUrl(url) {
     // poi riprova l'API con quei cookie
     const homeResult = await new Promise((resolve, reject) => {
       networkFetchNative(
-        "https://www.animeworld.ac/",
+        `${CONFIG.BASE}/`,
         { timeoutSeconds: 12, returnHTML: false, returnCookies: true },
         resolve,
         reject
@@ -194,7 +210,7 @@ async function callApi(episodeId, extraHeaders) {
       ...extraHeaders
     };
     const res = await soraFetch(
-      `https://www.animeworld.ac/api/episode/info?id=${episodeId}&alt=0`,
+      `${CONFIG.BASE}/api/episode/info?id=${episodeId}&alt=0`,
       { headers, method: "GET", body: null }
     );
     if (!res) return null;
@@ -210,8 +226,8 @@ async function callApi(episodeId, extraHeaders) {
 async function soraFetch(url, options = { headers: {}, method: 'GET', body: null }) {
     try {
         const response = await fetchv2(url, options.headers ?? {}, options.method ?? 'GET', options.body ?? null);
-        // fetchv2 risolve sempre (mai reject), anche in caso di errore.
-        // Se status è undefined significa che ha restituito {error: "..."} → fallback.
+        // Luna: fetchv2 risolve sempre (mai reject), anche in caso di errore → {error: "..."} senza status.
+        // Shirox: fetchv2 rigetta in caso di errore → si finisce direttamente nel catch.
         if (response && response.status !== undefined) {
             return response;
         }

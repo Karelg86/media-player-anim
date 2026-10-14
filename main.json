@@ -2,10 +2,10 @@
   "sourceName": "AnimeWorld IT",
   "iconUrl": "https://raw.githubusercontent.com/cranci1/Ryu/d48d716ec6c5ef9ae7b3711c117f920b0c7eb1ce/Ryu/Assets.xcassets/Sources/AnimeWorld.imageset/animeworld.png",
   "author": {
-    "name": "sobet",
-    "icon": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRQPQ1qIiALbM3xDWGsuJzu6ItaQGwb9ICRRw&s"
+    "name": "Karelg86",
+    "icon": "https://github.com/Karelg86.png"
   },
-  "version": "1.0.5",
+  "version": "1.0.6",
   "language": "Italian",
   "streamType": "MP4",
   "quality": "1080p",
@@ -14,6 +14,7 @@
   "scriptUrl": "https://raw.githubusercontent.com/Karelg86/media-player-anim/main/extractor.js",
   "type": "anime",
   "asyncJS": true,
+  "supportsShirox": true,
   "supportsMojuru": true,
   "supportsSora": true,
   "supportsLuna": true

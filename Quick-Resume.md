@@ -1,20 +1,44 @@
-# 🔄 Quick-Resume: Modulo AnimeWorld IT per Luna
+# 🔄 Quick-Resume: Modulo AnimeWorld IT
 
-Manuale di riferimento aggiornato al 2026-06-04.
+> **Versione modulo:** 1.0.6  
+> **Ultimo aggiornamento:** 14 Ottobre 2026  
+> **App principale:** iOS **Shirox** (compatibile anche con Luna / Sora / Mojuru)  
+> **Repository GitHub:** [Karelg86/media-player-anim](https://github.com/Karelg86/media-player-anim)  
+> **URL modulo:** `https://raw.githubusercontent.com/Karelg86/media-player-anim/main/main.json`  
+> **Cartella locale:** `d:\Sora_Sulfur\Anim_Git\` (o cartella clone del repo)
 
-## 📦 Repository
-
-- **Repository GitHub:** `https://github.com/Karelg86/media-player-anim`
-- **URL modulo per Luna:** `https://raw.githubusercontent.com/Karelg86/media-player-anim/main/main.json`
-- **Cartella locale:** `d:\Sora_Sulfur\Anim_Git\`
+---
 
 ## 📄 File nel repository
 
-| File | Descrizione |
-|------|-------------|
-| `main.json` | Configurazione del modulo (sourceName, baseUrl, searchBaseUrl, scriptUrl) |
-| `extractor.js` | Script di estrazione: ricerca, dettagli, episodi e stream video |
-| `Quick-Resume.md` | Questo file |
+```
+media-player-anim/
+├── main.json                       # Configurazione del modulo (versione, baseUrl, scriptUrl)
+├── extractor.js                    # Ricerca, dettagli, episodi e stream video
+├── test-module.js                  # Test locale (Node.js 18+) prima del push
+├── Quick-Resume.md                 # Questo file
+├── .gitignore                      # Esclude backup/ e file locali
+├── .github/
+│   ├── workflows/
+│   │   ├── check-domain.yml        # Robot: controlla il dominio ogni 6 ore e AVVISA (issue)
+│   │   ├── update-domain.yml       # Robot: cambio dominio su richiesta (anche da cellulare)
+│   │   └── health-check.yml        # Robot: test completo ogni giorno, AVVISA se il modulo non funziona
+│   └── scripts/
+│       ├── check-domain.js
+│       └── update-domain.js
+└── backup/                         # SOLO sul PC (ignorato da git): versioni precedenti
+```
+
+---
+
+## 🆕 Novità v1.0.6 (14 Ottobre 2026)
+
+1. **Dominio in un solo punto:** `CONFIG.BASE` in cima a `extractor.js` (prima era ripetuto in 5 punti).
+2. **Apostrofi e simboli:** `decodeEntities` applicato a titoli, trama e titolo originale. AnimeWorld scrive l'apostrofo come `&#x27;` (es. "Frieren: Beyond Journey&#x27;s End" → ora "Frieren: Beyond Journey's End").
+3. **Trama pulita:** rimossi i tag HTML (`<br>` diventa a capo).
+4. **Episodi:** gli attributi di `<a>` vengono letti uno per uno, quindi l'ordine nell'HTML non conta. Numero episodio preso da `data-num`.
+5. **Pulizia `data-id`:** verificato il 14/10/2026 che il `data-id` dell'episodio **coincide** con l'ultimo segmento dell'URL (`data-id="vlhlNp"` ↔ `/play/.../vlhlNp`). Il vecchio trucco `href#data-id` non serviva (e la sua regex non trovava mai nulla perché nell'HTML `data-id` viene prima di `href`). Gli episodi salvati con `#...` dalla v1.0.5 continuano a funzionare.
+6. **`main.json`:** `supportsShirox: true`, autore Karelg86, icona GitHub stabile.
 
 ---
 
@@ -22,139 +46,120 @@ Manuale di riferimento aggiornato al 2026-06-04.
 
 ### Funzioni dell'extractor
 
-1. **`searchResults(keyword)`** — Cerca su `/search?keyword=...`, estrae titoli da `<div class="film-list">`, ogni item ha `class="name"` (titolo/link) e `class="poster"` (immagine)
-2. **`extractDetails(url)`** — Estrae descrizione (`<div class="desc">`), titolo originale (`<h2 class="title" data-jtitle="...">`), data uscita (`Data di Uscita:`)
-3. **`extractEpisodes(url)`** — Trova episodi in `<div class="server active">`, ogni episodio è `<li class="episode"><a href="/play/..." data-id="...">`. Il `data-id` viene encodato nel fragment dell'URL (`href#data-id`) per passarlo a `extractStreamUrl`
-4. **`extractStreamUrl(url)`** — Approccio ibrido (vedi sezione dedicata)
+1. **`searchResults(keyword)`** — Cerca su `/search?keyword=...`, estrae i titoli da `<div class="film-list">` (ogni item ha `class="name"` e `class="poster"`). La lista termina con `<div class="clearfix"></div>`: la pagina contiene altre liste laterali che NON vanno prese.
+2. **`extractDetails(url)`** — Trama (`<div class="desc">`), titolo originale (`data-jtitle`), data uscita (`Data di Uscita:`).
+3. **`extractEpisodes(url)`** — Episodi in `<div class="server active">`, ogni episodio è `<li class="episode"><a data-id="..." data-num="1" href="/play/...">`. One Piece: 1180 episodi tutti nella stessa pagina.
+4. **`extractStreamUrl(url)`** — Approccio a 3 step (vedi sotto).
 
 ### Formato URL episodio
-`https://www.animeworld.ac/play/SLUG.ANIMEID/TOKEN`
-- `TOKEN` = ultimo segmento URL = usato come fallback per l'API
-- `data-id` = attributo HTML sull'`<a>` dell'episodio = ID corretto per l'API
+`https://www.animeworld.ac/play/SLUG.ANIMEID/TOKEN` — `TOKEN` = `data-id` = id per l'API.
 
 ---
 
-## 🎬 extractStreamUrl — Approccio ibrido
+## 🎬 extractStreamUrl — 3 step
 
-**Metodo 1: API diretta** (rapido, funziona per molti anime)
+**Step 1: API diretta** (rapida, funziona per la maggior parte degli anime)
 ```
-GET https://www.animeworld.ac/api/episode/info?id={episodeId}&alt=0
-→ {"grabber": "https://cdn.../file.mp4", "name": "TOKEN", "target": "..."}
+GET https://www.animeworld.ac/api/episode/info?id={TOKEN}&alt=0
+→ {"grabber": "https://srvXX-....sweetpixel.org/DDL/ANIME/.../File_Ep_01_SUB_ITA.mp4", ...}
 ```
-- `episodeId` = estratto dal fragment `#data-id` se presente, altrimenti `url.split("/").pop()` (TOKEN)
-- Se la risposta ha `data.grabber`, viene restituito direttamente
 
-**Metodo 2: WebView reale** (fallback quando l'API è bloccata)
-- Chiama `networkFetchNative(url, {timeoutSeconds:20, cutoff:".mp4"}, resolve, reject)`
-- Luna apre la pagina in un WKWebView reale che bypassa Cloudflare
-- Monitora tutti gli URL caricati (XHR, fetch, video.src, jwplayer, ecc.)
-- Con `cutoff: ".mp4"` si ferma appena trova il primo URL video
-- Cerca anche `.m3u8` come fallback
+**Step 2: cookie Cloudflare** — `networkFetchNative` apre la homepage in un WebView reale, prende i cookie e riprova l'API.
+
+**Step 3: WebView sulla pagina episodio** — `networkFetchNative` con `cutoff: ".mp4"` intercetta l'URL del video dal player (cerca anche `.m3u8`).
 
 ---
 
-## 🔬 Come funziona `fetchv2` in Luna (CRITICO)
+## 🔬 `fetchv2`: differenza Shirox / Luna (CRITICO)
 
-Fonte: `Luna/JSLoader/JavaScriptCore+Extensions.swift` su GitHub (`cranci1/Luna`)
+| | **Shirox** (`xibrox/Shirox`, `Shirox/Services/JSEngine.swift`) | **Luna** (`cranci1/Luna`) |
+|---|---|---|
+| In caso di errore | **rigetta** la Promise | **risolve** con `{error: "..."}` senza `status` |
+| Cloudflare | bypass integrato (`CloudflareBypassManager`: cookie + retry automatico su Turnstile) | nessuno |
+| `fetch` globale | alias di `fetchv2` di Shirox | `fetch` nativo |
 
+`soraFetch` gestisce entrambi: controlla `response.status !== undefined` (caso Luna) e ha un `try/catch` (caso Shirox).
+
+### `networkFetchNative` (presente in Shirox e Luna, stessa firma)
 ```js
-fetchv2(url, headers, method, body, redirect, encoding)
+networkFetchNative(url, options, resolve, reject)   // callback, NON Promise
 ```
-
-- **È un `URLSession.downloadTask`** — una semplice richiesta HTTP, NON un WebView
-- **Risolve SEMPRE, non rigetta mai** — anche in caso di errore di rete chiama `resolve({error: "..."})` invece di `reject`
-- Quando ha successo restituisce: `{status: 200, headers: {...}, body: "..."}` con metodi `.text()` e `.json()`
-- Quando fallisce restituisce: `{error: "..."}` — senza `status`, senza `body`
-
-### Bug storico in `soraFetch` (fixato)
-Il vecchio `soraFetch` usava `try/catch` sul `await fetchv2(...)`. Ma poiché `fetchv2` non rigetta mai, il `catch` non scattava mai e il fallback a `fetch` nativo non partiva mai.
-
-**Fix:** controllare `response.status !== undefined` per rilevare l'errore:
-```js
-async function soraFetch(url, options) {
-    try {
-        const response = await fetchv2(url, options.headers, options.method, options.body);
-        if (response && response.status !== undefined) return response; // successo
-        throw new Error('fetchv2 error');  // forza il fallback
-    } catch (e) {
-        try { return await fetch(url, options); }
-        catch (error) { return null; }
-    }
-}
-```
-
----
-
-## 🖥️ Come funziona `networkFetchNative` in Luna
-
-Fonte: `Luna/JSLoader/JSController-NetworkFetch.swift` su GitHub (`cranci1/Luna`)
-
-```js
-networkFetchNative(url, options, resolve, reject)
-```
-
-- **È un WKWebView reale** — carica la pagina come un browser, bypassa Cloudflare
-- Inietta JavaScript che monitora: `fetch`, `XHR`, `WebSocket`, `video.src`, `jwplayer.setup`, variabili globali, contenuto `<script>`
-- Opzioni disponibili: `timeoutSeconds`, `cutoff` (stringa: si ferma quando trova URL che la contiene), `returnHTML`, `returnCookies`, `clickSelectors`, `waitForSelectors`
-- Risultato: `{success: true, requests: [...], cutoffTriggered: bool, cutoffUrl: "...", html: "...", cookies: {...}}`
-- **NON ha wrapper Promise** — va chiamata con callback: `new Promise((res, rej) => networkFetchNative(url, opts, res, rej))`
+- È un WKWebView reale: carica la pagina come un browser.
+- Opzioni: `timeoutSeconds`, `cutoff`, `returnHTML`, `returnCookies`, `clickSelectors`, `waitForSelectors`, `maxWaitTime`.
+- Risultato: `{success, requests: [...], cutoffTriggered, cutoffUrl, html, cookies}`.
+- Shirox definisce anche il wrapper Promise `networkFetch(url, options)` (`Shirox/Services/NetworkFetch.swift`).
 
 ---
 
 ## ⚠️ Problemi noti
 
-### 1. Redirect 301 (CRITICO)
-- `https://animeworld.ac` (senza www) → redirect 301 → `https://www.animeworld.ac`
-- `fetchv2` NON segue redirect per default
-- **Soluzione:** usare SEMPRE `https://www.animeworld.ac` con `www`
+### 1. Redirect dominio senza `www` → con `www`
+- Su Luna `fetchv2` non segue i redirect → usare SEMPRE l'indirizzo con `www`.
+- Quando cambi dominio, scrivilo **con `www.`** se il sito lo usa (il robot di controllo ti propone già l'indirizzo completo).
 
 ### 2. API `/api/episode/info` bloccata da Cloudflare
-- Per alcuni anime, Cloudflare blocca la chiamata API restituendo "Could not connect to the server"
-- Per altri anime funziona senza problemi (Cloudflare selettivo per contenuto)
-- **Soluzione:** approccio ibrido — API prima, WebView come fallback
+- Per alcuni anime Cloudflare può bloccare la chiamata API → entrano in gioco gli step 2 e 3.
+- Test 14/10/2026 (da PC, senza cookie): API diretta funzionante per Frieren e One Piece.
 
-### 3. Ricerca con titoli giapponesi (LIMITE DI LUNA)
-- Luna nel cross-service search passa a volte il titolo giapponese (es. "キルアオ")
-- AnimeWorld indicizza i titoli in italiano/inglese (es. "Kill Blue")
-- Il nostro `searchResults` passa il keyword direttamente ad AnimeWorld → nessun risultato
-- **Non risolvibile lato extractor** — dipende da come Luna gestisce i titoli
+### 3. "Continua a guardare" e href stabili
+- Nelle build recenti di Shirox (`Views/ContinueWatchingCard.swift` → `onStreamExpired`) se il link salvato non funziona più l'app richiama `extractEpisodes`, ritrova l'episodio tramite `href` (o numero) e chiede un nuovo stream.
+- Gli `href` degli episodi devono quindi restare **stabili**. Gli episodi salvati con la v1.0.5 (`href#data-id`) non coincidono più con i nuovi `href`: Shirox ripiega sul numero episodio, quindi funzionano comunque.
 
-### 4. `extractDetails` con condizione troppo rigida (fixato)
-- La vecchia condizione `if (description && aliases && airdate)` richiedeva tutti e tre i campi
-- **Fix:** push sempre con i campi disponibili
-
-### 5. `filmListRegex` dipendeva da `clearfix` (fixato)
-- **Fix:** regex semplificata che non dipende dal div clearfix
-
-### 6. `soraFetch` fallback mai attivo (fixato)
-- **Fix:** check `response.status !== undefined` prima di restituire la risposta di `fetchv2`
+### 4. Ricerca con titoli giapponesi (limite dell'app)
+- Nella ricerca incrociata l'app può passare il titolo giapponese (es. "キルアオ"); AnimeWorld indicizza titoli italiani/inglesi → nessun risultato. Non risolvibile lato extractor.
 
 ---
 
-## 📝 Procedura di aggiornamento dominio
+## 🔁 CAMBIO DOMINIO
 
-1. **`main.json`** — aggiornare `baseUrl`, `searchBaseUrl`, `iconUrl`
-2. **`extractor.js`** — sostituire tutte le stringhe con il vecchio dominio
-3. **Push:**
-   ```bash
-   cd d:\Sora_Sulfur\Anim_Git
-   git add .
-   git commit -m "Aggiornato dominio a NUOVO_DOMINIO"
-   git push
-   ```
-4. Ricaricare il modulo in Luna
+### 🤖 Avviso automatico
+- Ogni 6 ore GitHub esegue **Controllo dominio** (non modifica nulla).
+- Se il dominio reindirizza altrove **o non risponde più**, apre una **issue** con etichetta `dominio` assegnata a te → notifica su app GitHub / email.
+- Lancio manuale: *Actions → Controllo dominio → Run workflow*.
+- ⚠️ GitHub sospende i workflow programmati dopo **60 giorni senza attività** nel repo (manda una email prima). Riattivazione: *Actions → Controllo dominio → Enable workflow*.
+
+### 🩺 Salute del modulo (robot giornaliero)
+- Ogni giorno GitHub esegue **Salute modulo**: test offline + test completo sul sito vero (ricerca → episodi → stream).
+- Se fallisce **2 volte di fila** apre una issue con etichetta `salute` (notifica su app GitHub / email): il sito ha probabilmente cambiato la struttura delle pagine e il modulo va aggiornato.
+- Un solo errore isolato non genera avvisi (Cloudflare a volte blocca i server di GitHub).
+- Quando il test torna a funzionare la issue si chiude da sola. Lancio manuale: *Actions → Salute modulo → Run workflow*.
+
+### 📱 Da cellulare
+1. Apri il link nella issue, oppure `https://github.com/Karelg86/media-player-anim/actions/workflows/update-domain.yml`
+2. **Run workflow** → scrivi il nuovo dominio **senza** `https://` (es. `www.animeworld.nuovo`) → conferma.
+3. Il robot sostituisce il dominio in `main.json`, `extractor.js`, `Quick-Resume.md`, incrementa la versione, lancia i test, fa commit + push e chiude la issue.
+4. Su Shirox: Moduli → aggiorna.
+
+> Test del robot falliti ≠ errore per forza: Cloudflare a volte blocca i server di GitHub. Prova su Shirox o lancia il test dal PC.
+
+### 💻 Da PC
+```bash
+node .github/scripts/update-domain.js www.animeworld.nuovo
+node test-module.js "frieren"
+node test-module.js "one piece"
+git add main.json extractor.js Quick-Resume.md
+git commit -m "Update domain to www.animeworld.nuovo - v1.0.7"
+git push origin main
+```
+
+> ⚠️ Shirox salva lo script in cache: incrementare `version` in `main.json` è **obbligatorio** per far scaricare la nuova versione. `update-domain.js` lo fa da solo.
+
+---
+
+## 🧪 Test locale
+
+```bash
+node test-module.js --mock         # offline: apostrofi, trama, episodi, stream API, compatibilità v1.0.5
+node test-module.js "frieren"      # live
+node test-module.js "one piece"    # live, anime lungo
+```
+In Node non esistono `fetchv2` e `networkFetchNative`: il test live verifica solo lo step 1 (API diretta).
+Versione vecchia: `EXTRACTOR=backup/v1.0.5/extractor.js node test-module.js --mock`.
 
 ---
 
 ## 🔗 Risorse utili
 
-- **Source code Luna:** `https://github.com/cranci1/Luna`
-  - `Luna/JSLoader/JavaScriptCore+Extensions.swift` — definizione `fetchv2`, `networkFetchNative`
-  - `Luna/JSLoader/JSController-NetworkFetch.swift` — implementazione WebView
-  - `Luna/JSLoader/JSController-Streams.swift` — come Luna processa il risultato di `extractStreamUrl`
-- **AnimeWorld-API ufficiale (Python):** `https://github.com/MainKronos/AnimeWorld-API`
-  - Usa `data-id` dall'HTML (non il token URL) per chiamare l'API
-  - Fa una GET sulla homepage prima di ogni chiamata API per estrarre cookie anti-bot
-
----
-**Dominio corrente configurato nei file:** `www.animeworld.ac`
+- **Sorgente Shirox:** `https://github.com/xibrox/Shirox` — `Shirox/Services/JSEngine.swift` (fetchv2), `Shirox/Services/NetworkFetch.swift` (networkFetchNative), `Shirox/Services/CloudflareBypassManager.swift`
+- **Sorgente Luna:** `https://github.com/cranci1/Luna` — `Luna/JSLoader/JavaScriptCore+Extensions.swift`, `Luna/JSLoader/JSController-NetworkFetch.swift`
+- **AnimeWorld-API (Python):** `https://github.com/MainKronos/AnimeWorld-API`
