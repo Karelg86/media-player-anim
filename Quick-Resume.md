@@ -1,11 +1,10 @@
 # 🔄 Quick-Resume: Modulo AnimeWorld IT
 
-> **Versione modulo:** 1.0.6  
-> **Ultimo aggiornamento:** 14 Ottobre 2026  
+> **Versione modulo:** 1.0.7  
+> **Ultimo aggiornamento:** 10 Novembre 2026  
 > **App principale:** iOS **Shirox** (compatibile anche con Luna / Sora / Mojuru)  
 > **Repository GitHub:** [Karelg86/media-player-anim](https://github.com/Karelg86/media-player-anim)  
 > **URL modulo:** `https://raw.githubusercontent.com/Karelg86/media-player-anim/main/main.json`  
-> **Cartella locale:** `d:\Sora_Sulfur\Anim_Git\` (o cartella clone del repo)
 
 ---
 
@@ -20,7 +19,7 @@ media-player-anim/
 ├── .gitignore                      # Esclude backup/ e file locali
 ├── .github/
 │   ├── workflows/
-│   │   ├── check-domain.yml        # Robot: controlla il dominio ogni 6 ore e AVVISA (issue)
+│   │   ├── check-domain.yml        # Robot: controlla il dominio e AVVISA (issue). Solo avvio manuale dal 20/10/2026
 │   │   ├── update-domain.yml       # Robot: cambio dominio su richiesta (anche da cellulare)
 │   │   └── health-check.yml        # Robot: test completo ogni giorno, AVVISA se il modulo non funziona
 │   └── scripts/
@@ -31,7 +30,15 @@ media-player-anim/
 
 ---
 
-## 🆕 Novità v1.0.6 (14 Ottobre 2026)
+## 🆕 Novità v1.0.7 (10 Novembre 2026)
+
+1. **Retry su rete debole / sito sovraccarico:** `soraFetch` ritenta fino a **3 volte** (pausa 1 s, poi 2 s) se la rete fallisce o il server risponde `5xx`, `429` o `408`, entro ~50 s. Gli altri errori (`403`, `404`) non vengono ritentati. Stesso schema di StreamingCommunity, VixSrc e dei moduli manga.
+2. **Stream, step 3 sempre tentato:** se lo step 2 (cookie dalla homepage) va in errore, il modulo passa comunque allo step 3 (WebView sulla pagina episodio). Prima un errore nello step 2 faceva uscire subito con stream vuoto.
+3. Test: `node test-module.js --mock` copre anche retry e passaggio allo step 3. Test live del 10/11/2026 da PC: "frieren" ok (ricerca, 28 episodi, stream da API diretta).
+
+Backup pre-modifica: `backup/v1.0.6/`.
+
+## Novità v1.0.6 (14 Ottobre 2026)
 
 1. **Dominio in un solo punto:** `CONFIG.BASE` in cima a `extractor.js` (prima era ripetuto in 5 punti).
 2. **Apostrofi e simboli:** `decodeEntities` applicato a titoli, trama e titolo originale. AnimeWorld scrive l'apostrofo come `&#x27;` (es. "Frieren: Beyond Journey&#x27;s End" → ora "Frieren: Beyond Journey's End").
@@ -113,10 +120,9 @@ networkFetchNative(url, options, resolve, reject)   // callback, NON Promise
 ## 🔁 CAMBIO DOMINIO
 
 ### 🤖 Avviso automatico
-- Ogni 6 ore GitHub esegue **Controllo dominio** (non modifica nulla).
+- **Controllo dominio** è disattivato dal 20/10/2026 (il dominio non cambia): parte solo a mano da *Actions → Controllo dominio → Run workflow*. Non modifica nulla.
 - Se il dominio reindirizza altrove **o non risponde più**, apre una **issue** con etichetta `dominio` assegnata a te → notifica su app GitHub / email.
-- Lancio manuale: *Actions → Controllo dominio → Run workflow*.
-- ⚠️ GitHub sospende i workflow programmati dopo **60 giorni senza attività** nel repo (manda una email prima). Riattivazione: *Actions → Controllo dominio → Enable workflow*.
+- ⚠️ GitHub sospende i workflow programmati (qui: **Salute modulo**) dopo **60 giorni senza attività** nel repo (manda una email prima). Riattivazione: *Actions → Salute modulo → Enable workflow*.
 
 ### 🩺 Salute del modulo (robot giornaliero)
 - Ogni giorno GitHub esegue **Salute modulo**: test offline + test completo sul sito vero (ricerca → episodi → stream).
@@ -149,7 +155,7 @@ git push origin main
 ## 🧪 Test locale
 
 ```bash
-node test-module.js --mock         # offline: apostrofi, trama, episodi, stream API, compatibilità v1.0.5
+node test-module.js --mock         # offline: apostrofi, trama, episodi, stream API, compatibilità v1.0.5, retry, step 3
 node test-module.js "frieren"      # live
 node test-module.js "one piece"    # live, anime lungo
 ```

@@ -1,6 +1,11 @@
 /**
  * Shirox / Sora / Luna Module Extractor - AnimeWorld IT
- * Versione: 1.0.6
+ * Versione: 1.0.7
+ *
+ * Novità v1.0.7:
+ * - soraFetch ritenta fino a 3 volte (pausa 1 s, 2 s) se la rete fallisce o il server
+ *   risponde 5xx/429/408, entro ~50 s (Shirox concede 120 s a ogni funzione del modulo)
+ * - extractStreamUrl: se lo step 2 (cookie dalla homepage) va in errore si passa comunque allo step 3
  *
  * Novità v1.0.6:
  * - Dominio in un solo punto (CONFIG.BASE)
@@ -164,19 +169,24 @@ async function extractStreamUrl(url) {
 
     // Step 2: Carica homepage con WebView reale per ottenere i cookie Cloudflare,
     // poi riprova l'API con quei cookie
-    const homeResult = await new Promise((resolve, reject) => {
-      networkFetchNative(
-        `${CONFIG.BASE}/`,
-        { timeoutSeconds: 12, returnHTML: false, returnCookies: true },
-        resolve,
-        reject
-      );
-    });
-    if (homeResult && homeResult.cookies && Object.keys(homeResult.cookies).length > 0) {
-      const cookieString = Object.entries(homeResult.cookies)
-        .map(([k, v]) => `${k}=${v}`).join("; ");
-      const withCookies = await callApi(episodeId, { "Cookie": cookieString });
-      if (withCookies) return withCookies;
+    // Se questo step va in errore (timeout del WebView, ecc.) si prosegue comunque con lo step 3
+    try {
+      const homeResult = await new Promise((resolve, reject) => {
+        networkFetchNative(
+          `${CONFIG.BASE}/`,
+          { timeoutSeconds: 12, returnHTML: false, returnCookies: true },
+          resolve,
+          reject
+        );
+      });
+      if (homeResult && homeResult.cookies && Object.keys(homeResult.cookies).length > 0) {
+        const cookieString = Object.entries(homeResult.cookies)
+          .map(([k, v]) => `${k}=${v}`).join("; ");
+        const withCookies = await callApi(episodeId, { "Cookie": cookieString });
+        if (withCookies) return withCookies;
+      }
+    } catch (error) {
+      console.log("Stream: step 2 (cookie) fallito, passo allo step 3:", error);
     }
 
     // Step 3: WebView sulla pagina episodio — intercetta l'URL MP4 dal player
@@ -223,7 +233,30 @@ async function callApi(episodeId, extraHeaders) {
   }
 }
 
+// Rete debole o sito sovraccarico: una richiesta fallita o con errore del server viene ritentata,
+// invece di arrivare a Shirox come stream/lista vuota al primo errore.
+// Il limite di tempo resta sotto i 120 s che Shirox concede a ogni funzione del modulo.
+const FETCH_ATTEMPTS = 3;
+const FETCH_TIME_BUDGET_MS = 50000;
+
 async function soraFetch(url, options = { headers: {}, method: 'GET', body: null }) {
+    const started = Date.now();
+    let res = null;
+    for (let attempt = 1; attempt <= FETCH_ATTEMPTS; attempt++) {
+        res = await soraFetchOnce(url, options);
+        if (res && !(res.status >= 500 || res.status === 429 || res.status === 408)) return res;
+        if (attempt === FETCH_ATTEMPTS || Date.now() - started > FETCH_TIME_BUDGET_MS) break;
+        console.log(`[soraFetch] tentativo ${attempt} fallito (${res ? res.status : "rete"}), riprovo: ${url}`);
+        await sleep(1000 * attempt);
+    }
+    return res;
+}
+
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function soraFetchOnce(url, options) {
     try {
         const response = await fetchv2(url, options.headers ?? {}, options.method ?? 'GET', options.body ?? null);
         // Luna: fetchv2 risolve sempre (mai reject), anche in caso di errore → {error: "..."} senza status.

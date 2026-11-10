@@ -17,12 +17,13 @@ const vm = require("vm");
 
 const EXTRACTOR_PATH = process.env.EXTRACTOR || path.join(__dirname, "extractor.js");
 
-function loadExtractor(fetchImpl) {
+function loadExtractor(fetchImpl, extras = {}) {
   const context = vm.createContext({
     fetch: fetchImpl,
     console: { log() {}, error: console.error },
     setTimeout,
     clearTimeout,
+    ...extras,
   });
   vm.runInContext(fs.readFileSync(EXTRACTOR_PATH, "utf8"), context, { filename: "extractor.js" });
   return context;
@@ -138,6 +139,49 @@ async function runMock() {
 
   const legacy = await ex.extractStreamUrl(`${BASE}/play/frieren.abc/tokA#tokA`);
   check("stream: compatibile con episodi salvati v1.0.5 (href#data-id)", legacy === "https://cdn.example/Frieren_Ep_01.mp4", legacy || "null");
+
+  // Retry: errori temporanei del server/rete prima della risposta buona
+  const flaky = (failures) => {
+    const calls = {};
+    const base = makeMockFetch({ requests: [] });
+    const fetchImpl = async (url, options) => {
+      calls[url] = (calls[url] || 0) + 1;
+      const failure = failures[calls[url] - 1];
+      if (failure === "rete") throw new Error("network down");
+      if (failure) return { status: failure, text: async () => "" };
+      return base(url, options);
+    };
+    return { calls, fetchImpl };
+  };
+  const streamUrl = `${BASE}/play/frieren.abc/tokA`;
+  const apiUrl = `${BASE}/api/episode/info?id=tokA&alt=0`;
+  const expected = "https://cdn.example/Frieren_Ep_01.mp4";
+
+  let f = flaky([503]);
+  check("retry: 503 poi ok -> stream", (await loadExtractor(f.fetchImpl).extractStreamUrl(streamUrl)) === expected, `richieste api: ${f.calls[apiUrl]}`);
+
+  f = flaky(["rete"]);
+  check("retry: errore di rete poi ok -> stream", (await loadExtractor(f.fetchImpl).extractStreamUrl(streamUrl)) === expected);
+
+  f = flaky([404]);
+  await loadExtractor(f.fetchImpl).extractStreamUrl(streamUrl);
+  check("retry: 404 non ritentato", f.calls[apiUrl] === 1, `${f.calls[apiUrl]} richieste`);
+
+  f = flaky([503, 503, 503, 503]);
+  const dead = await loadExtractor(f.fetchImpl).extractStreamUrl(streamUrl);
+  check("retry: max 3 tentativi poi null", dead === null && f.calls[apiUrl] === 3, `${f.calls[apiUrl]} richieste`);
+
+  // Step WebView: l'API non dà il video (tokB), lo step 2 va in errore, lo step 3 deve partire lo stesso
+  const webviewCalls = [];
+  const networkFetchNative = (url, options, resolve, reject) => {
+    webviewCalls.push(url);
+    if (url === `${BASE}/`) reject("timeout");
+    else resolve({ success: true, cutoffTriggered: true, cutoffUrl: "https://cdn.example/Frieren_Ep_02.mp4" });
+  };
+  const exWeb = loadExtractor(makeMockFetch({ requests: [] }), { networkFetchNative });
+  const viaWebview = await exWeb.extractStreamUrl(`${BASE}/play/frieren.abc/tokB`);
+  check("stream: step 2 in errore -> step 3 eseguito comunque", viaWebview === "https://cdn.example/Frieren_Ep_02.mp4",
+    `${viaWebview || "null"} (WebView aperti: ${webviewCalls.length})`);
 }
 
 // ==========================================
