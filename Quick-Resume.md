@@ -1,7 +1,7 @@
 # 🔄 Quick-Resume: Modulo AnimeWorld IT
 
-> **Versione modulo:** 1.0.7  
-> **Ultimo aggiornamento:** 10 Novembre 2026  
+> **Versione modulo:** 1.0.8  
+> **Ultimo aggiornamento:** 18 Novembre 2026  
 > **App principale:** iOS **Shirox** (compatibile anche con Luna / Sora / Mojuru)  
 > **Repository GitHub:** [Karelg86/media-player-anim](https://github.com/Karelg86/media-player-anim)  
 > **URL modulo:** `https://raw.githubusercontent.com/Karelg86/media-player-anim/main/main.json`  
@@ -29,6 +29,10 @@ media-player-anim/
 ```
 
 ---
+
+## 🆕 Novità v1.0.8 (18 Novembre 2026)
+- `onCurrentDomain`: gli href salvati da Shirox (libreria, "Continua a guardare") con un dominio vecchio vengono portati sul dominio attuale (`CONFIG.BASE`), quindi dopo un cambio dominio gli anime salvati continuano a funzionare.
+- Robot dominio come StreamingCommunity: **Controllo dominio** riattivato (ogni 6 ore, avviso solo dopo 2 controlli di fila senza risposta, chiude da solo la issue quando il dominio risponde); **Aggiorna dominio** aggiorna anche `test-module.js`, così il test offline del robot "Salute modulo" non dà falsi allarmi.
 
 ## 🆕 Novità v1.0.7 (10 Novembre 2026)
 
@@ -111,6 +115,7 @@ networkFetchNative(url, options, resolve, reject)   // callback, NON Promise
 ### 3. "Continua a guardare" e href stabili
 - Nelle build recenti di Shirox (`Views/ContinueWatchingCard.swift` → `onStreamExpired`) se il link salvato non funziona più l'app richiama `extractEpisodes`, ritrova l'episodio tramite `href` (o numero) e chiede un nuovo stream.
 - Gli `href` degli episodi devono quindi restare **stabili**. Gli episodi salvati con la v1.0.5 (`href#data-id`) non coincidono più con i nuovi `href`: Shirox ripiega sul numero episodio, quindi funzionano comunque.
+- Dalla v1.0.8 un href con un dominio vecchio funziona lo stesso (onCurrentDomain); resta importante non cambiare il percorso /play/SLUG.ANIMEID/TOKEN.
 
 ### 4. Ricerca con titoli giapponesi (limite dell'app)
 - Nella ricerca incrociata l'app può passare il titolo giapponese (es. "キルアオ"); AnimeWorld indicizza titoli italiani/inglesi → nessun risultato. Non risolvibile lato extractor.
@@ -120,8 +125,9 @@ networkFetchNative(url, options, resolve, reject)   // callback, NON Promise
 ## 🔁 CAMBIO DOMINIO
 
 ### 🤖 Avviso automatico
-- **Controllo dominio** è disattivato dal 20/10/2026 (il dominio non cambia): parte solo a mano da *Actions → Controllo dominio → Run workflow*. Non modifica nulla.
-- Se il dominio reindirizza altrove **o non risponde più**, apre una **issue** con etichetta `dominio` assegnata a te → notifica su app GitHub / email.
+- **Controllo dominio** gira da solo ogni 6 ore (riattivato il 18/11/2026). Se il dominio reindirizza altrove, apre una **issue** con etichetta `dominio` (notifica su app GitHub / email) con il nuovo dominio e il link al robot. Se il sito non risponde, avvisa solo dopo 2 controlli di fila. Quando il dominio di `main.json` torna a rispondere, la issue si chiude da sola.
+- Dopo l'aggiornamento (robot o PC) la versione in `main.json` sale: Shirox scarica il modulo nuovo da solo all'avvio a freddo o col refresh in Moduli, senza reinserire il link.
+- Limite: Cloudflare a volte risponde 403 ai server di GitHub; in quel caso il controllo vede il sito "vivo" e non si accorge del cambio. Se il modulo smette di funzionare, controllare il dominio a mano.
 - ⚠️ GitHub sospende i workflow programmati (qui: **Salute modulo**) dopo **60 giorni senza attività** nel repo (manda una email prima). Riattivazione: *Actions → Salute modulo → Enable workflow*.
 
 ### 🩺 Salute del modulo (robot giornaliero)
@@ -143,7 +149,7 @@ networkFetchNative(url, options, resolve, reject)   // callback, NON Promise
 node .github/scripts/update-domain.js www.animeworld.nuovo
 node test-module.js "frieren"
 node test-module.js "one piece"
-git add main.json extractor.js Quick-Resume.md
+git add main.json extractor.js Quick-Resume.md test-module.js
 git commit -m "Update domain to www.animeworld.nuovo - v1.0.7"
 git push origin main
 ```

@@ -1,6 +1,10 @@
 /**
  * Shirox / Sora / Luna Module Extractor - AnimeWorld IT
- * Versione: 1.0.7
+ * Versione: 1.0.8
+ *
+ * Novità v1.0.8:
+ * - Href salvati con un dominio vecchio (libreria, "Continua a guardare") portati sul dominio attuale
+ *   (onCurrentDomain): dopo un cambio dominio gli anime salvati continuano a funzionare
  *
  * Novità v1.0.7:
  * - soraFetch ritenta fino a 3 volte (pausa 1 s, 2 s) se la rete fallisce o il server
@@ -31,6 +35,13 @@ function decodeEntities(str = "") {
 // Rimuove i tag HTML e normalizza gli spazi (per la trama)
 function stripTags(str = "") {
   return str.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "").replace(/[ \t]+/g, " ").trim();
+}
+
+// Href salvati prima di un cambio dominio: stesso percorso, dominio attuale (CONFIG.BASE).
+// Gli href arrivano solo da questo modulo, quindi sono sempre pagine del sito.
+function onCurrentDomain(url) {
+  if (!url) return url;
+  return url.replace(/^https?:\/\/[^/]+/i, CONFIG.BASE);
 }
 
 function absUrl(href) {
@@ -91,7 +102,7 @@ async function searchResults(keyword) {
 // ==========================================
 async function extractDetails(url) {
   try {
-    const response = await soraFetch(url);
+    const response = await soraFetch(onCurrentDomain(url));
     if (!response) return JSON.stringify([]);
     const html = await response.text();
 
@@ -115,7 +126,7 @@ async function extractDetails(url) {
 // ==========================================
 async function extractEpisodes(url) {
   try {
-    const response = await soraFetch(url);
+    const response = await soraFetch(onCurrentDomain(url));
     if (!response) return JSON.stringify([]);
     const html = await response.text();
 
@@ -159,7 +170,7 @@ async function extractEpisodes(url) {
 async function extractStreamUrl(url) {
   try {
     // Compatibilità con episodi salvati dalla v1.0.5 (href#data-id): il fragment viene ignorato
-    const cleanUrl = url.indexOf("#") !== -1 ? url.substring(0, url.indexOf("#")) : url;
+    const cleanUrl = onCurrentDomain(url.indexOf("#") !== -1 ? url.substring(0, url.indexOf("#")) : url);
     // L'ultimo segmento dell'URL coincide con il data-id usato dall'API
     const episodeId = cleanUrl.split("/").pop();
 

@@ -117,6 +117,9 @@ async function runMock() {
     check(`decodeEntities("${raw}")`, typeof ex0.decodeEntities === "function" && ex0.decodeEntities(raw) === "L'a");
   }
 
+  check("href con dominio vecchio -> dominio attuale",
+    ex0.onCurrentDomain("https://www.animeworld.vecchio/play/frieren.abc/xyz") === `${BASE}/play/frieren.abc/xyz`);
+
   const stats = { requests: [] };
   const ex = loadExtractor(makeMockFetch(stats));
 
